@@ -29,6 +29,8 @@ t_model.eval()
 
 s_model = MobileNetV2(num_classes=5)
 s_model = s_model.to(device)
+s_model_data = torch.load('pth/s1.pth', map_location=device)
+s_model.load_state_dict(s_model_data, strict=False)
 # s_model.train()
 
 temp = 19
@@ -39,21 +41,22 @@ soft_loss = nn.KLDivLoss(reduction="batchmean")
 optimizer = torch.optim.Adam(s_model.parameters(), lr=1e-4)
 
 epochs = 3
+best_acc = 0.5522
 for epoch in range(epochs):
     s_model.train()
 
     num_correct = 0
     num_samples = 0
     with torch.no_grad():
-        for x,y in test_loader:
+        for x,y in test_loader: # x是输入，y是标签
             x = x.to(device)
             y = y.to(device)
 
             preds = t_model(x)
             predictions = preds.max(1).indices
-            num_correct += (predictions == y).sum()
-            num_samples += predictions.size(0)
-        acc = (num_correct/num_samples).item()
+            num_correct += (predictions == y).sum() # 统计预测对了的个数
+            num_samples += predictions.size(0) # 统计预测总数
+        acc = (num_correct/num_samples).item() # teacher预测准确率
         print("teacher Accuracy:{:.4f}".format(acc))
 
     for data, targets in tqdm(train_loader):
@@ -65,7 +68,7 @@ for epoch in range(epochs):
 
         with torch.no_grad():
             teacher_preds = t_model(data)
-        distill_loss = soft_loss(
+            distill_loss = soft_loss(
             F.softmax(student_preds / temp, dim=1),
             F.softmax(teacher_preds / temp, dim=1)
         )
@@ -89,6 +92,11 @@ for epoch in range(epochs):
             num_correct += (predictions == y).sum()
             num_samples += predictions.size(0)
         acc = (num_correct/num_samples).item()
+
+    if acc > best_acc:
+        best_acc = acc
+        torch.save(s_model.state_dict(), 'pth/s101.pth')
+        print("Sucsessful!")
 
     s_model.train()
     print("Epoch:{}\t Accuracy:{:.4f}".format(epoch+1, acc))
